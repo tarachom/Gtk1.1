@@ -1,2 +1,19 @@
-﻿// See https://aka.ms/new-console-template for more information
-Console.WriteLine("Hello, World!");
+﻿using Gtk;
+
+namespace GtkTest
+{
+    class Program
+    {
+        public static void Main()
+        {
+            Application.Init();
+            new WindowStart();
+            Application.Run();
+        }
+
+        public static void Quit()
+        {
+            Application.Quit();
+        }
+    }
+}
