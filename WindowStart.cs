@@ -6,6 +6,7 @@ namespace GtkTest
     class WindowStart : Window
     {
         NpgsqlDataSource? DataSource { get; set; }
+        NpgsqlTransaction? Transaction { get; set; }
 
         ListStore? Store;
         TreeView? treeView;
@@ -59,7 +60,6 @@ namespace GtkTest
             scroll.Add(treeView);
 
             hboxTree.PackStart(scroll, true, true, 10);
-
 
             ShowAll();
         }
@@ -153,7 +153,7 @@ namespace GtkTest
                 if (!(result != null && result.ToString() == "Exist"))
                 {
                     //Створити новий композитний тип uuidtext
-                    command.CommandText = $@"
+                    command.CommandText = @"
 CREATE TYPE uuidtext AS 
 (
     uuid uuid, 
@@ -162,7 +162,7 @@ CREATE TYPE uuidtext AS
                     command.ExecuteNonQuery();
 
                     //Додати колонку info в таблицю tab1 типу uuidtext
-                    command.CommandText = $@"ALTER TABLE tab1 ADD COLUMN info uuidtext";
+                    command.CommandText = "ALTER TABLE tab1 ADD COLUMN info uuidtext";
                     command.ExecuteNonQuery();
 
                     //Перечитати типи
@@ -171,7 +171,35 @@ CREATE TYPE uuidtext AS
             }
         }
 
+        #region Transaction
 
+        void BeginTransaction()
+        {
+            if (DataSource != null)
+            {
+                Transaction = DataSource.OpenConnection().BeginTransaction();
+            }
+        }
+
+        void CommitTransaction()
+        {
+            if (Transaction != null)
+            {
+                Transaction.Commit();
+                Transaction.Connection?.Close();
+            }
+        }
+
+        void RollbackTransaction()
+        {
+            if (Transaction != null)
+            {
+                Transaction.Rollback();
+                Transaction.Connection?.Close();
+            }
+        }
+
+        #endregion
 
         void OnFill(object? sender, EventArgs args)
         {
@@ -193,6 +221,8 @@ CREATE TYPE uuidtext AS
 
                     Store!.AppendValues(new Gdk.Pixbuf("doc.png"), id, name, desc, info.ToString());
                 }
+
+                reader.Close();
             }
         }
 
@@ -217,6 +247,8 @@ CREATE TYPE uuidtext AS
         {
             if (DataSource != null)
             {
+                BeginTransaction();
+
                 NpgsqlCommand command = DataSource.CreateCommand(
                     "UPDATE tab1 SET name = @name, \"desc\" = @desc, info = @info WHERE id = @id");
 
@@ -234,9 +266,23 @@ CREATE TYPE uuidtext AS
                         command.Parameters.AddWithValue("desc", desc);
                         command.Parameters.AddWithValue("info", new UuidAndText(Guid.NewGuid(), name + " - " + desc));
 
-                        command.ExecuteNonQuery();
+                        try
+                        {
+                            command.ExecuteNonQuery();
+                        }
+                        catch (Exception ex)
+                        {
+                            RollbackTransaction();
+
+                            Console.WriteLine(ex.Message);
+                            return;
+                        }
                     }
                     while (Store.IterNext(ref iter));
+
+                CommitTransaction();
+
+                OnFill(this, new EventArgs());
             }
         }
 
